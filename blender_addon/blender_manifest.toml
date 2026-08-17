@@ -12,8 +12,8 @@ tags = ["Mesh"]
 blender_version_min = "4.2.0"
 
 # The add-on code is GPL-3.0-or-later. The bundled autoremesher_core wheel is
-# built from MIT/BSD-3/MPL-2.0/Apache-2.0 sources (AutoRemesher, geogram,
-# Eigen, oneTBB) — all GPL-3 compatible.
+# built from MIT/MPL-2.0/Apache-2.0 sources (AutoRemesher,
+# isotropicremesher, meshoptimizer, Eigen and oneTBB) — all GPL-3 compatible.
 license = ["SPDX:GPL-3.0-or-later"]
 copyright = [
   "2020-2026 Jeremy HU / Dust3D Project",

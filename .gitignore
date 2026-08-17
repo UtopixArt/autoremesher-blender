@@ -41,6 +41,8 @@ Makefile
 qrc_*.cpp
 
 .DS_Store
+__pycache__/
+*.py[cod]
 
 moc/build/
 dist/

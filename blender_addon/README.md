@@ -3,7 +3,7 @@
 A Blender extension that runs [AutoRemesher](https://github.com/huxingyi/autoremesher)'s
 automatic quad remeshing directly inside Blender, with the desktop app's
 parameters (Target Quads, Edge Scaling, Sharp Edge, Smooth Normal,
-Adaptivity) in a 3D View sidebar panel (N-panel → AutoRemesher tab).
+Adaptivity, Anisotropy) in a 3D View sidebar panel (N-panel → AutoRemesher tab).
 
 Select a mesh object and press **Remesh**: the evaluated mesh (modifiers
 applied) is remeshed on a background thread — progress shows in the status
@@ -46,5 +46,5 @@ BLENDER_USER_EXTENSIONS=$(mktemp -d) blender -b --factory-startup --python tests
 The extension (this directory) is **GPL-3.0-or-later**, as required for
 add-ons on [extensions.blender.org](https://extensions.blender.org).
 The bundled `autoremesher_core` wheel is built from GPL-compatible sources:
-AutoRemesher and isotropicremesher (MIT), geogram (BSD-3-Clause),
+AutoRemesher and isotropicremesher (MIT), meshoptimizer (MIT),
 Eigen (MPL-2.0, compiled with `EIGEN_MPL2_ONLY`), oneTBB (Apache-2.0).
