@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - blender-addon
+      - sync-*
     tags:
       - "v*"
   workflow_dispatch:
