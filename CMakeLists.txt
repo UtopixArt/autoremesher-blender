@@ -23,17 +23,18 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-# --- oneTBB, built statically so the wheel is self-contained
-include(FetchContent)
+# --- Bundled TBB, built statically so the wheel is self-contained.
+# Do not download a dependency during a wheel build: runners and local
+# installations must be reproducible even when GitHub's archive CDN throttles.
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 set(TBB_INSTALL OFF CACHE BOOL "" FORCE)
 set(TBB_ENABLE_IPO OFF CACHE BOOL "" FORCE)
 set(TBBMALLOC_BUILD OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF)
-FetchContent_Declare(TBB
-    URL https://github.com/uxlfoundation/oneTBB/archive/refs/tags/v2022.2.0.tar.gz)
-FetchContent_MakeAvailable(TBB)
+set(TBB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(TBB_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+add_subdirectory(thirdparty/tbb EXCLUDE_FROM_ALL)
 
 set(CORE_SOURCES
     src/AutoRemesher/autoremesher.cpp
@@ -65,7 +66,7 @@ target_include_directories(autoremesher_static PUBLIC
 )
 target_compile_definitions(autoremesher_static PUBLIC
     _USE_MATH_DEFINES NOMINMAX EIGEN_MPL2_ONLY)
-target_link_libraries(autoremesher_static PUBLIC TBB::tbb)
+target_link_libraries(autoremesher_static PUBLIC tbb_static)
 set_target_properties(autoremesher_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(APPLE)
