@@ -21,6 +21,7 @@
  */
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDebug>
 #include <QDesktopServices>
@@ -53,6 +54,7 @@
 #include "logbrowser.h"
 #include "mainwindow.h"
 #include "preferences.h"
+#include "previewmeshgenerator.h"
 #include "quadmeshgenerator.h"
 #include "rendermeshgenerator.h"
 #include "theme.h"
@@ -64,6 +66,7 @@
 LogBrowser* g_logBrowser = nullptr;
 QTextBrowser* g_acknowlegementsWidget = nullptr;
 QTextBrowser* g_supportersWidget = nullptr;
+QTextBrowser* g_contributorsWidget = nullptr;
 AboutWidget* g_aboutWidget = nullptr;
 std::map<MainWindow*, QUuid> g_windows;
 
@@ -128,6 +131,10 @@ MainWindow::MainWindow()
 
     helpMenu->addSeparator();
 
+    QAction* seeContributorsAction = new QAction(tr("Contributors"), this);
+    connect(seeContributorsAction, &QAction::triggered, this, &MainWindow::showContributors);
+    helpMenu->addAction(seeContributorsAction);
+
     QAction* seeSupportersAction = new QAction(tr("Supporters"), this);
     connect(seeSupportersAction, &QAction::triggered, this, &MainWindow::showSupporters);
     helpMenu->addAction(seeSupportersAction);
@@ -149,6 +156,67 @@ MainWindow::MainWindow()
 
     graphicsWidget->setModelWidget(m_modelRenderWidget);
     containerWidget->setModelWidget(m_modelRenderWidget);
+
+    // ============================================================
+    // PREVIEW BUTTONS — [source] [decimated] [isotropic] [param] [remesh]
+    // (placed in the right sidebar layout below)
+    // ============================================================
+
+    auto makePreviewButton = [&](const QString& label) -> QPushButton* {
+        QPushButton* btn = new QPushButton(label, containerWidget);
+        btn->setFixedHeight(22);
+        btn->setStyleSheet(
+            "QPushButton {"
+            "  color: #191919;"
+            "  background-color: #aaebc4;"
+            "  border: 1px solid #2a2a2a;"
+            "  border-radius: 3px;"
+            "  padding: 0 6px;"
+            "  font-size: 11px;"
+            "}"
+            "QPushButton:hover {"
+            "  background-color: #8ad4a8;"
+            "  border-color: #4a4a4a;"
+            "}"
+            "QPushButton:pressed {"
+            "  background-color: #6dbe8e;"
+            "}"
+            "QPushButton:checked {"
+            "  background-color: #aaebc4;"
+            "  color: #191919;"
+            "  border: 1px solid #2a2a2a;"
+            "}"
+            "QPushButton:!checked {"
+            "  background-color: rgba(42, 42, 42, 180);"
+            "  color: #aaaaaa;"
+            "  border: 1px solid #3a3a3a;"
+            "}"
+            "QPushButton:!checked:hover {"
+            "  background-color: rgba(60, 60, 60, 200);"
+            "  color: #cccccc;"
+            "}");
+        btn->setCheckable(true);
+        btn->show();
+        return btn;
+    };
+
+    m_previewSourceButton = makePreviewButton(tr("Source"));
+    m_previewDecimateButton = makePreviewButton(tr("Decimated"));
+    m_previewIsotropicButton = makePreviewButton(tr("Isotropic"));
+    m_previewParamButton = makePreviewButton(tr("Param"));
+    m_previewRemeshButton = makePreviewButton(tr("Remeshed"));
+
+    m_previewSourceButton->setEnabled(false);
+    m_previewDecimateButton->setEnabled(false);
+    m_previewIsotropicButton->setEnabled(false);
+    m_previewParamButton->setEnabled(false);
+    m_previewRemeshButton->setEnabled(false);
+
+    connect(m_previewSourceButton, &QPushButton::clicked, this, &MainWindow::switchToSourceView);
+    connect(m_previewDecimateButton, &QPushButton::clicked, this, &MainWindow::switchToDecimateView);
+    connect(m_previewIsotropicButton, &QPushButton::clicked, this, &MainWindow::switchToIsotropicView);
+    connect(m_previewParamButton, &QPushButton::clicked, this, &MainWindow::switchToParamView);
+    connect(m_previewRemeshButton, &QPushButton::clicked, this, &MainWindow::switchToRemeshView);
 
     // ============================================================
     // PROGRESS BAR — thin micro-line at top of window
@@ -199,11 +267,19 @@ MainWindow::MainWindow()
         m_adaptivity = value;
     });
 
+    m_anisotropyWidget = new FloatNumberWidget(this, false);
+    m_anisotropyWidget->setItemName(tr("Anisotropy"));
+    m_anisotropyWidget->setRange(0.0, 1.0);
+    m_anisotropyWidget->setValue(m_anisotropy);
+    m_anisotropyWidget->setToolTip(tr("Curvature-adaptive quad elongation. 0 = square quads, 1 = quads stretched along the flatter direction (long on tubes and ridges, square on spheres)."));
+    connect(m_anisotropyWidget, &FloatNumberWidget::valueChanged, [=](float value) {
+        m_anisotropy = value;
+    });
+
     m_targetQuadCountWidget = new IntNumberWidget(this, false);
     m_targetQuadCountWidget->setItemName(tr("Target Quads"));
     m_targetQuadCountWidget->setRange(1000, 1000000);
     m_targetQuadCountWidget->setValue(m_targetQuadCount);
-    m_targetQuadCountWidget->setSuffix(tr(" quads"));
     connect(m_targetQuadCountWidget, &IntNumberWidget::valueChanged, [=](int value) {
         m_targetQuadCount = value;
     });
@@ -250,6 +326,7 @@ MainWindow::MainWindow()
     controlsLayout->addWidget(m_sharpEdgeDegreesWidget);
     controlsLayout->addWidget(m_smoothNormalDegreesWidget);
     controlsLayout->addWidget(m_adaptivityWidget);
+    controlsLayout->addWidget(m_anisotropyWidget);
     controlsLayout->addWidget(m_targetQuadCountWidget);
     controlsLayout->addWidget(m_targetScalingWidget);
     //controlsLayout->addWidget(m_modelTypeSelectBox);
@@ -267,6 +344,13 @@ MainWindow::MainWindow()
     m_vertexCountLabel->setStyleSheet("color: #ffffff; font-size: 11px; padding: 2px 0;");
     m_vertexCountLabel->hide();
 
+    // The 2px bar alone cannot say which of the twenty odd steps is running, and
+    // the longer ones take seconds, so name the step next to the percentage.
+    m_progressStatusLabel = new QLabel(this);
+    m_progressStatusLabel->setStyleSheet("color: #9a9a9a; font-size: 11px; padding: 2px 0;");
+    m_progressStatusLabel->setWordWrap(true);
+    m_progressStatusLabel->hide();
+
     // Toolbar rows at bottom
     QHBoxLayout* toolbarLayout = new QHBoxLayout;
     toolbarLayout->setSpacing(4);
@@ -281,15 +365,27 @@ MainWindow::MainWindow()
     saveLayout->addWidget(saveMeshButton, 1);
     controlsLayout->addLayout(saveLayout);
 
+    controlsLayout->addStretch();
+
+    controlsLayout->addWidget(m_progressStatusLabel);
     controlsLayout->addWidget(m_quadCountLabel);
     controlsLayout->addWidget(m_nonQuadCountLabel);
     controlsLayout->addWidget(m_vertexCountLabel);
 
-    controlsLayout->addStretch();
+    // Preview overlay buttons in a row at bottom of sidebar
+    controlsLayout->addSpacing(8);
+    QHBoxLayout* previewButtonsLayout = new QHBoxLayout;
+    previewButtonsLayout->setSpacing(4);
+    previewButtonsLayout->addWidget(m_previewSourceButton);
+    previewButtonsLayout->addWidget(m_previewDecimateButton);
+    previewButtonsLayout->addWidget(m_previewIsotropicButton);
+    previewButtonsLayout->addWidget(m_previewParamButton);
+    previewButtonsLayout->addWidget(m_previewRemeshButton);
+    controlsLayout->addLayout(previewButtonsLayout);
 
     QWidget* controlsPanel = new QWidget;
     controlsPanel->setLayout(controlsLayout);
-    controlsPanel->setFixedWidth(220);
+    controlsPanel->setFixedWidth(400);
     controlsPanel->setObjectName("controlsPanel");
     controlsPanel->setStyleSheet(
         "#controlsPanel {"
@@ -352,6 +448,7 @@ void MainWindow::updateButtonStates()
         m_sharpEdgeDegreesWidget->setEnabled(true);
         m_smoothNormalDegreesWidget->setEnabled(true);
         m_adaptivityWidget->setEnabled(true);
+        m_anisotropyWidget->setEnabled(true);
         //m_modelTypeSelectBox->setEnabled(true);
         if (nullptr != m_remeshedQuads) {
             m_saveMeshButton->show();
@@ -365,6 +462,7 @@ void MainWindow::updateButtonStates()
             m_regenerateButton->hide();
         }
         m_progressBar->hide();
+        m_progressStatusLabel->hide();
     } else {
         m_loadModelButton->setEnabled(false);
         m_saveMeshButton->hide();
@@ -374,8 +472,16 @@ void MainWindow::updateButtonStates()
         m_sharpEdgeDegreesWidget->setDisabled(true);
         m_smoothNormalDegreesWidget->setDisabled(true);
         m_adaptivityWidget->setDisabled(true);
+        m_anisotropyWidget->setDisabled(true);
         //m_modelTypeSelectBox->setDisabled(true);
     }
+
+    // Update preview button availability
+    m_previewSourceButton->setEnabled(m_sourceRenderMesh != nullptr);
+    m_previewDecimateButton->setEnabled(m_decimatedRenderMesh != nullptr);
+    m_previewIsotropicButton->setEnabled(m_isotropicRenderMesh != nullptr);
+    m_previewParamButton->setEnabled(m_paramRenderMesh != nullptr);
+    m_previewRemeshButton->setEnabled(m_remeshRenderMesh != nullptr);
 }
 
 bool MainWindow::loadObj(const QString& filename)
@@ -397,6 +503,37 @@ bool MainWindow::loadObj(const QString& filename)
     if (!loadSuccess) {
         return false;
     }
+
+    // Reset preview state for new model
+    delete m_sourceRenderMesh;
+    m_sourceRenderMesh = nullptr;
+    delete m_decimatedRenderMesh;
+    m_decimatedRenderMesh = nullptr;
+    delete m_isotropicRenderMesh;
+    m_isotropicRenderMesh = nullptr;
+    delete m_paramRenderMesh;
+    m_paramRenderMesh = nullptr;
+    delete m_remeshRenderMesh;
+    m_remeshRenderMesh = nullptr;
+    m_decimatedVertices.clear();
+    m_decimatedTriangles.clear();
+    m_isotropicVertices.clear();
+    m_isotropicTriangles.clear();
+    m_isotropicTriangleUvs.clear();
+    m_isotropicOriginalTriangleUvs.clear();
+    m_isotropicExtractedConnectionMoved.clear();
+    m_isotropicSingularVertices.clear();
+    m_isotropicExtractedConnections.clear();
+    delete m_remeshedVertices;
+    m_remeshedVertices = nullptr;
+    delete m_remeshedQuads;
+    m_remeshedQuads = nullptr;
+    m_previewMode = PreviewSource;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(false);
 
     m_originalVertices.resize(attributes.vertices.size() / 3);
     for (size_t i = 0, j = 0; i < m_originalVertices.size(); ++i) {
@@ -511,6 +648,66 @@ void MainWindow::updateTitle()
     setWindowTitle(QString("%1 %2 %3%4").arg(appName).arg(appVer).arg(m_currentFilename).arg(m_saved ? "" : "*"));
 }
 
+void MainWindow::switchToSourceView()
+{
+    m_previewMode = PreviewSource;
+    m_previewSourceButton->setChecked(true);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(false);
+    if (m_sourceRenderMesh)
+        m_modelRenderWidget->updateMesh(new ModelShaderMesh(*m_sourceRenderMesh));
+}
+
+void MainWindow::switchToDecimateView()
+{
+    m_previewMode = PreviewDecimate;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(true);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(false);
+    if (m_decimatedRenderMesh)
+        m_modelRenderWidget->updateMesh(new ModelShaderMesh(*m_decimatedRenderMesh));
+}
+
+void MainWindow::switchToIsotropicView()
+{
+    m_previewMode = PreviewIsotropic;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(true);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(false);
+    if (m_isotropicRenderMesh)
+        m_modelRenderWidget->updateMesh(new ModelShaderMesh(*m_isotropicRenderMesh));
+}
+
+void MainWindow::switchToParamView()
+{
+    m_previewMode = PreviewParam;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(true);
+    m_previewRemeshButton->setChecked(false);
+    if (m_paramRenderMesh)
+        m_modelRenderWidget->updateMesh(new ModelShaderMesh(*m_paramRenderMesh));
+}
+
+void MainWindow::switchToRemeshView()
+{
+    m_previewMode = PreviewRemesh;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(true);
+    if (m_remeshRenderMesh)
+        m_modelRenderWidget->updateMesh(new ModelShaderMesh(*m_remeshRenderMesh));
+}
+
 void MainWindow::updateProgress(float progress)
 {
 #ifdef Q_OS_WIN32
@@ -520,17 +717,23 @@ void MainWindow::updateProgress(float progress)
 
 void MainWindow::updateProgressDetailed(float progress, const QString& status)
 {
-    m_progressBar->setValue((int)(progress * 100));
+    const int percent = (int)(progress * 100);
+    m_progressBar->setValue(percent);
     m_progressBar->show();
-
-    if (progress >= 1.0f) {
-        m_progressBar->hide();
-    }
+    m_progressStatusLabel->setText(status.isEmpty()
+            ? QString("%1%").arg(percent)
+            : QString("%1%  %2").arg(percent).arg(status));
+    m_progressStatusLabel->show();
 }
 
 MainWindow::~MainWindow()
 {
     g_windows.erase(this);
+    delete m_sourceRenderMesh;
+    delete m_decimatedRenderMesh;
+    delete m_isotropicRenderMesh;
+    delete m_paramRenderMesh;
+    delete m_remeshRenderMesh;
 }
 
 ModelShaderWidget* MainWindow::modelRenderWidget() const
@@ -551,6 +754,23 @@ void MainWindow::showSupporters()
     g_supportersWidget->show();
     g_supportersWidget->activateWindow();
     g_supportersWidget->raise();
+}
+
+void MainWindow::showContributors()
+{
+    if (!g_contributorsWidget) {
+        g_contributorsWidget = new QTextBrowser;
+        g_contributorsWidget->setWindowTitle(unifiedWindowTitle(tr("Contributors")));
+        g_contributorsWidget->setMinimumSize(QSize(320, 280));
+        QFile authors(":/AUTHORS");
+        authors.open(QFile::ReadOnly | QFile::Text);
+        QFile contributors(":/CONTRIBUTORS");
+        contributors.open(QFile::ReadOnly | QFile::Text);
+        g_contributorsWidget->setHtml("<h1>AUTHORS</h1><pre>" + authors.readAll() + "</pre><h1>CONTRIBUTORS</h1><pre>" + contributors.readAll() + "</pre>");
+    }
+    g_contributorsWidget->show();
+    g_contributorsWidget->activateWindow();
+    g_contributorsWidget->raise();
 }
 
 void MainWindow::showAcknowlegements()
@@ -676,15 +896,89 @@ void MainWindow::renderMeshReady()
     delete m_renderMeshGenerator;
     m_renderMeshGenerator = nullptr;
 
+    // Save a copy of the mesh being displayed, then pass ownership to the binder
+    if (nullptr == m_remeshedVertices && nullptr == m_remeshedQuads) {
+        // This is the source mesh being displayed
+        delete m_sourceRenderMesh;
+        m_sourceRenderMesh = new ModelShaderMesh(*renderMesh);
+        m_previewMode = PreviewSource;
+        m_previewSourceButton->setChecked(true);
+        m_previewDecimateButton->setChecked(false);
+        m_previewIsotropicButton->setChecked(false);
+        m_previewParamButton->setChecked(false);
+        m_previewRemeshButton->setChecked(false);
+    } else {
+        // This is the remesh result being displayed — save a copy
+        delete m_remeshRenderMesh;
+        m_remeshRenderMesh = new ModelShaderMesh(*renderMesh);
+
+        // Now generate isotropic (voxel) and param preview meshes
+        generatePreviewMeshes();
+    }
+
     m_modelRenderWidget->updateMesh(renderMesh);
 
+    updateButtonStates();
+
     checkRenderQueue();
+}
+
+void MainWindow::generatePreviewMeshes()
+{
+    if (nullptr != m_previewMeshGenerator)
+        return;
+
+    QThread* thread = new QThread;
+    m_previewMeshGenerator = new PreviewMeshGenerator(
+        m_decimatedVertices, m_decimatedTriangles,
+        m_isotropicVertices, m_isotropicTriangles, m_isotropicTriangleUvs,
+        m_isotropicOriginalTriangleUvs,
+        m_isotropicSingularVertices, m_isotropicExtractedConnections,
+        m_isotropicExtractedConnectionMoved);
+    m_previewMeshGenerator->moveToThread(thread);
+    connect(thread, &QThread::started, m_previewMeshGenerator, &PreviewMeshGenerator::process);
+    connect(m_previewMeshGenerator, &PreviewMeshGenerator::finished, this, &MainWindow::previewMeshesReady);
+    connect(m_previewMeshGenerator, &PreviewMeshGenerator::finished, thread, &QThread::quit);
+    connect(thread, &QThread::finished, thread, &QThread::deleteLater);
+    thread->start();
+}
+
+void MainWindow::previewMeshesReady()
+{
+    delete m_decimatedRenderMesh;
+    m_decimatedRenderMesh = m_previewMeshGenerator->takeDecimatedMesh();
+
+    delete m_isotropicRenderMesh;
+    m_isotropicRenderMesh = m_previewMeshGenerator->takeIsotropicMesh();
+
+    delete m_paramRenderMesh;
+    m_paramRenderMesh = m_previewMeshGenerator->takeParamMesh();
+
+    delete m_previewMeshGenerator;
+    m_previewMeshGenerator = nullptr;
+
+    // Enable preview buttons
+    m_previewDecimateButton->setEnabled(nullptr != m_decimatedRenderMesh);
+    m_previewIsotropicButton->setEnabled(true);
+    m_previewParamButton->setEnabled(true);
+    m_previewRemeshButton->setEnabled(true);
+
+    // Show the remesh result by default (master copy stays in m_remeshRenderMesh)
+    m_previewMode = PreviewRemesh;
+    m_previewSourceButton->setChecked(false);
+    m_previewDecimateButton->setChecked(false);
+    m_previewIsotropicButton->setChecked(false);
+    m_previewParamButton->setChecked(false);
+    m_previewRemeshButton->setChecked(true);
+    m_modelRenderWidget->updateMesh(
+        m_remeshRenderMesh ? new ModelShaderMesh(*m_remeshRenderMesh) : new ModelShaderMesh);
 }
 
 void MainWindow::setHeadlessParams(const QString& inputPath, const QString& outputPath,
     int targetQuads, double edgeScaling,
     double sharpEdgeDegrees, double smoothNormalDegrees,
-    double adaptivity)
+    double adaptivity,
+    double anisotropy)
 {
     m_headlessMode = true;
     m_headlessOutputPath = outputPath;
@@ -694,6 +988,7 @@ void MainWindow::setHeadlessParams(const QString& inputPath, const QString& outp
     m_sharpEdgeDegrees = static_cast<float>(sharpEdgeDegrees);
     m_smoothNormalDegrees = static_cast<float>(smoothNormalDegrees);
     m_adaptivity = static_cast<float>(adaptivity);
+    m_anisotropy = static_cast<float>(anisotropy);
 }
 
 void MainWindow::saveMeshToFile(const QString& filename)
@@ -752,6 +1047,7 @@ void MainWindow::runHeadless()
     parameters.scaling = m_targetScaling;
     parameters.modelType = m_modelType;
     parameters.adaptivity = m_adaptivity;
+    parameters.anisotropy = m_anisotropy;
     parameters.sharpEdgeDegrees = m_sharpEdgeDegrees;
     parameters.smoothNormalDegrees = m_smoothNormalDegrees;
 
@@ -784,6 +1080,8 @@ void MainWindow::generateQuadMesh()
 
     m_progressBar->setValue(0);
     m_progressBar->show();
+    m_progressStatusLabel->setText(tr("0%  Initializing"));
+    m_progressStatusLabel->show();
 
     QThread* thread = new QThread;
 
@@ -793,6 +1091,7 @@ void MainWindow::generateQuadMesh()
     parameters.scaling = m_targetScaling;
     parameters.modelType = m_modelType;
     parameters.adaptivity = m_adaptivity;
+    parameters.anisotropy = m_anisotropy;
     parameters.sharpEdgeDegrees = m_sharpEdgeDegrees;
     parameters.smoothNormalDegrees = m_smoothNormalDegrees;
 
@@ -821,6 +1120,17 @@ void MainWindow::quadMeshReady()
 
     m_saved = false;
     m_inProgress = false;
+
+    // Capture intermediate isotropic mesh data for preview overlays
+    m_decimatedVertices = m_quadMeshGenerator->decimatedVertices();
+    m_decimatedTriangles = m_quadMeshGenerator->decimatedTriangles();
+    m_isotropicVertices = m_quadMeshGenerator->isotropicVertices();
+    m_isotropicTriangles = m_quadMeshGenerator->isotropicTriangles();
+    m_isotropicTriangleUvs = m_quadMeshGenerator->isotropicTriangleUvs();
+    m_isotropicOriginalTriangleUvs = m_quadMeshGenerator->isotropicOriginalTriangleUvs();
+    m_isotropicExtractedConnectionMoved = m_quadMeshGenerator->isotropicExtractedConnectionMoved();
+    m_isotropicSingularVertices = m_quadMeshGenerator->isotropicSingularVertices();
+    m_isotropicExtractedConnections = m_quadMeshGenerator->isotropicExtractedConnections();
 
     delete m_quadMeshGenerator;
     m_quadMeshGenerator = nullptr;

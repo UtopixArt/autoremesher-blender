@@ -25,6 +25,7 @@
 #include <set>
 #include <functional>
 #include "vector3.h"
+#include <cstdint>
 
 class IsotropicHalfedgeMesh
 {
@@ -138,6 +139,13 @@ private:
     bool testLengthSquaredAroundVertex(Vertex *vertex, 
         const Vector3 &target, 
         double maxEdgeLengthSquared);
+    bool isVertexPairConnected(Vertex *first, Vertex *second);
+    bool testMoveWouldDegenerate(Vertex *vertex, const Vector3 &target);
+    bool testCollapseWouldFoldOrDegenerate(Vertex *vertex,
+        Vertex *otherVertex,
+        const Vector3 &collapseTo,
+        Face *removedFaceOne,
+        Face *removedFaceTwo);
     void collectVerticesAroundVertex(Vertex *vertex,
         std::set<Vertex *> *vertices);
     void featureHalfedge(Halfedge *halfedge, double radians);

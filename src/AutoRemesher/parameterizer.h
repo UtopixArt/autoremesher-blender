@@ -19,9 +19,11 @@
  */
 #ifndef AUTO_REMESHER_PARAMETERIZER_H
 #define AUTO_REMESHER_PARAMETERIZER_H
+#include <AutoRemesher/Progress>
 #include <AutoRemesher/Vector2>
 #include <AutoRemesher/Vector3>
 #include <map>
+#include <utility>
 #include <vector>
 
 namespace AutoRemesher {
@@ -42,11 +44,26 @@ public:
         delete m_triangleUvs;
     }
 
+    const std::vector<std::vector<Vector2>>& originalTriangleUvs() const
+    {
+        return m_originalTriangleUvs;
+    }
+
     std::vector<std::vector<Vector2>>* takeTriangleUvs()
     {
         std::vector<std::vector<Vector2>>* triangleUvs = m_triangleUvs;
         m_triangleUvs = nullptr;
         return triangleUvs;
+    }
+
+    const std::vector<Vector3>& singularVertexPositions() const
+    {
+        return m_singularVertexPositions;
+    }
+
+    const std::vector<size_t>& singularVertexIndices() const
+    {
+        return m_singularVertexIndices;
     }
 
     void setScaling(double scaling)
@@ -64,6 +81,26 @@ public:
         m_sharpEdgeDegrees = degrees;
     }
 
+    void setAnisotropy(double anisotropy)
+    {
+        m_anisotropy = anisotropy;
+    }
+
+    void setSingularitySimplification(bool simplify)
+    {
+        m_singularitySimplification = simplify;
+    }
+
+    void setMaximumSingularityPairDistance(size_t faceHops)
+    {
+        m_maximumSingularityPairDistance = faceHops;
+    }
+
+    void setProgressHandler(ProgressHandler progressHandler)
+    {
+        m_progressHandler = std::move(progressHandler);
+    }
+
     bool parameterize();
 
 private:
@@ -71,9 +108,17 @@ private:
     const std::vector<std::vector<size_t>>* m_triangles = nullptr;
     const std::vector<Vector3>* m_triangleFieldVectors = nullptr;
     std::vector<std::vector<Vector2>>* m_triangleUvs = nullptr;
+    std::vector<Vector3> m_singularVertexPositions;
+    std::vector<size_t> m_singularVertexIndices;
+    std::vector<std::vector<Vector2>> m_originalTriangleUvs;
     double m_scaling = 1.0;
     double m_adaptivity = 0.5;
     double m_sharpEdgeDegrees = 90.0;
+    double m_anisotropy = 1.0;
+    double m_maxAspectRatio = 2.3;
+    bool m_singularitySimplification = true;
+    size_t m_maximumSingularityPairDistance = 6;
+    ProgressHandler m_progressHandler;
 
     std::vector<double> computeFaceScalingField(const std::vector<Vector3>& vertices,
         const std::vector<std::vector<size_t>>& triangles,

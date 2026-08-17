@@ -22,6 +22,7 @@
 #include "quadmeshgenerator.h"
 #include <QDebug>
 #include <QElapsedTimer>
+#include <cstdio>
 
 void QuadMeshGenerator::process()
 {
@@ -31,18 +32,40 @@ void QuadMeshGenerator::process()
     generate();
 
     auto timeUsed = timer.elapsed();
+    if (nullptr != m_autoRemesher) {
+        for (const auto& line : m_autoRemesher->phaseReport())
+            qDebug().noquote() << "  " << QString::fromStdString(line);
+    }
     qDebug() << "Quad mesh generation took" << timeUsed << "milliseconds";
 
     emit finished();
 }
 
+void QuadMeshGenerator::printProgress(float progress, const QString& status)
+{
+    // Reprint on a new step as well as a new percent: several steps are shorter
+    // than one percent of the run and would otherwise never be named.
+    const int percent = (int)(progress * 100);
+    if (percent == m_lastPrintedPercent && status == m_lastPrintedStatus)
+        return;
+    m_lastPrintedPercent = percent;
+    m_lastPrintedStatus = status;
+    if (status.isEmpty())
+        fprintf(stdout, "%d%% done.\n", percent);
+    else
+        fprintf(stdout, "%d%% done. %s\n", percent, qPrintable(status));
+    fflush(stdout);
+}
+
 void QuadMeshGenerator::emitProgress(float progress)
 {
+    printProgress(progress, QString());
     emit reportProgress(progress);
 }
 
 void QuadMeshGenerator::emitProgress(float progress, const QString& status)
 {
+    printProgress(progress, status);
     emit reportProgressDetailed(progress, status);
     emit reportProgress(progress);
 }
@@ -63,16 +86,31 @@ void QuadMeshGenerator::generate()
         m_autoRemesher->setTargetTriangleCount(m_parameters.targetTriangleCount);
     m_autoRemesher->setModelType(m_parameters.modelType);
     m_autoRemesher->setGradientAdaptivity(m_parameters.adaptivity);
+    m_autoRemesher->setAnisotropy(m_parameters.anisotropy);
     m_autoRemesher->setSharpEdgeDegrees(m_parameters.sharpEdgeDegrees);
     m_autoRemesher->setSmoothNormalDegrees(m_parameters.smoothNormalDegrees);
     m_autoRemesher->setTag(this);
     m_autoRemesher->setProgressHandler(reportProgressHandler);
-    if (!m_autoRemesher->remesh())
+    if (!m_autoRemesher->remesh()) {
+        emit finished();
         return;
+    }
 
     delete m_remeshedVertices;
     m_remeshedVertices = new std::vector<AutoRemesher::Vector3>(m_autoRemesher->remeshedVertices());
 
     delete m_remeshedQuads;
     m_remeshedQuads = new std::vector<std::vector<size_t>>(m_autoRemesher->remeshedQuads());
+
+    // Capture intermediate isotropic mesh data for preview overlays
+    m_decimated = m_autoRemesher->decimated();
+    m_decimatedVertices = m_autoRemesher->decimatedVertices();
+    m_decimatedTriangles = m_autoRemesher->decimatedTriangles();
+    m_isotropicVertices = m_autoRemesher->isotropicVertices();
+    m_isotropicTriangles = m_autoRemesher->isotropicTriangles();
+    m_isotropicTriangleUvs = m_autoRemesher->isotropicTriangleUvs();
+    m_isotropicOriginalTriangleUvs = m_autoRemesher->isotropicOriginalTriangleUvs();
+    m_isotropicSingularVertices = m_autoRemesher->isotropicSingularVertices();
+    m_isotropicExtractedConnections = m_autoRemesher->isotropicExtractedConnections();
+    m_isotropicExtractedConnectionMoved = m_autoRemesher->isotropicExtractedConnectionMoved();
 }

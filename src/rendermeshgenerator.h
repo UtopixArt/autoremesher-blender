@@ -24,6 +24,7 @@
 #include "modelshadermesh.h"
 #include <AutoRemesher/Vector3>
 #include <QObject>
+#include <cstdint>
 
 class RenderMeshGenerator : public QObject {
     Q_OBJECT
@@ -38,6 +39,10 @@ public:
     ~RenderMeshGenerator()
     {
         delete m_renderMesh;
+        // generate() releases these as soon as it is done with them, so this
+        // only covers the paths that bail out early
+        delete m_vertices;
+        delete m_faces;
     }
 
     ModelShaderMesh* takeRenderMesh()

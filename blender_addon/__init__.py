@@ -55,21 +55,12 @@ class AutoRemesherSettings(bpy.types.PropertyGroup):
         subtype='FACTOR',
         default=1.0, min=0.0, max=1.0,
     )
-    island_detail: bpy.props.IntProperty(
-        name="Island Detail",
-        description="Minimum quads across each small disconnected part "
-        "(teeth, spikes), measured across the part's diagonal so it adapts "
-        "to the part's size. Small parts are remeshed at higher density so "
-        "they keep their shape instead of collapsing into blobs; never adds "
-        "more detail than the original part had. 0 disables",
-        default=10, min=0, max=100,
-    )
-    preserve_thin: bpy.props.BoolProperty(
-        name="Preserve Thin Features",
-        description="Use finer quads on thin features (claws, horns) based "
-        "on the distance to the mesh's medial axis, so they keep their shape "
-        "instead of being averaged away",
-        default=True,
+    anisotropy: bpy.props.FloatProperty(
+        name="Anisotropy",
+        description="Anisotropic quad sizing from upstream AutoRemesher 1.1. "
+        "1.0 is isotropic; higher values stretch quads along principal "
+        "curvature directions",
+        default=1.0, min=1.0, max=4.0,
     )
     weld_shells: bpy.props.BoolProperty(
         name="Weld Shells",
@@ -235,10 +226,9 @@ class OBJECT_OT_autoremesher_remesh(bpy.types.Operator):
 
         params = {
             "target_quad_count": settings.target_quad_count,
-            "island_detail_spans": settings.island_detail,
-            "feature_size_factor": 1.0 if settings.preserve_thin else 0.0,
             "scaling": settings.edge_scaling,
             "adaptivity": settings.adaptivity,
+            "anisotropy": settings.anisotropy,
             "sharp_edge_degrees": math.degrees(settings.sharp_edge),
             "smooth_normal_degrees": math.degrees(settings.smooth_normal),
         }
@@ -386,8 +376,7 @@ class VIEW3D_PT_autoremesher(bpy.types.Panel):
         column.prop(settings, "adaptivity")
 
         column = layout.column(align=True)
-        column.prop(settings, "island_detail")
-        column.prop(settings, "preserve_thin")
+        column.prop(settings, "anisotropy")
         column.prop(settings, "weld_shells")
 
         if _active_job is not None:

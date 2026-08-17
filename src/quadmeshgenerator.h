@@ -22,7 +22,10 @@
 #ifndef AUTO_REMESHER_QUAD_MESH_GENERATOR_H
 #define AUTO_REMESHER_QUAD_MESH_GENERATOR_H
 #include <AutoRemesher/AutoRemesher>
+#include <AutoRemesher/Vector2>
 #include <QObject>
+#include <cstdint>
+#include <utility>
 
 class QuadMeshGenerator : public QObject {
     Q_OBJECT
@@ -32,6 +35,7 @@ public:
         size_t targetTriangleCount = 0;
         AutoRemesher::ModelType modelType = AutoRemesher::ModelType::Organic;
         double adaptivity = 1.0;
+        double anisotropy = 1.0;
         double sharpEdgeDegrees = 90.0;
         double smoothNormalDegrees = 0.0;
     };
@@ -69,7 +73,58 @@ public:
         return remeshedQuads;
     }
 
+    const std::vector<AutoRemesher::Vector3>& decimatedVertices() const
+    {
+        return m_decimatedVertices;
+    }
+
+    const std::vector<std::vector<size_t>>& decimatedTriangles() const
+    {
+        return m_decimatedTriangles;
+    }
+
+    bool decimated() const
+    {
+        return m_decimated;
+    }
+
+    const std::vector<AutoRemesher::Vector3>& isotropicVertices() const
+    {
+        return m_isotropicVertices;
+    }
+
+    const std::vector<std::vector<size_t>>& isotropicTriangles() const
+    {
+        return m_isotropicTriangles;
+    }
+
+    const std::vector<uint8_t>& isotropicExtractedConnectionMoved()
+    {
+        return m_isotropicExtractedConnectionMoved;
+    }
+
+    const std::vector<std::vector<AutoRemesher::Vector2>>& isotropicOriginalTriangleUvs()
+    {
+        return m_isotropicOriginalTriangleUvs;
+    }
+
+    const std::vector<std::vector<AutoRemesher::Vector2>>& isotropicTriangleUvs() const
+    {
+        return m_isotropicTriangleUvs;
+    }
+
+    const std::vector<AutoRemesher::Vector3>& isotropicSingularVertices() const
+    {
+        return m_isotropicSingularVertices;
+    }
+
+    const std::vector<std::pair<AutoRemesher::Vector3, AutoRemesher::Vector3>>& isotropicExtractedConnections() const
+    {
+        return m_isotropicExtractedConnections;
+    }
+
     void generate();
+    void printProgress(float progress, const QString& status);
     void emitProgress(float progress);
     void emitProgress(float progress, const QString& status);
 
@@ -82,10 +137,24 @@ public slots:
     void process();
 
 private:
+    // The pipeline now reports many times per whole percent, so the console line
+    // is only reprinted when the percentage or the step actually changes.
+    int m_lastPrintedPercent = -1;
+    QString m_lastPrintedStatus;
     std::vector<AutoRemesher::Vector3> m_vertices;
     std::vector<std::vector<size_t>> m_triangles;
     std::vector<AutoRemesher::Vector3>* m_remeshedVertices = nullptr;
     std::vector<std::vector<size_t>>* m_remeshedQuads = nullptr;
+    std::vector<AutoRemesher::Vector3> m_decimatedVertices;
+    std::vector<std::vector<size_t>> m_decimatedTriangles;
+    bool m_decimated = false;
+    std::vector<AutoRemesher::Vector3> m_isotropicVertices;
+    std::vector<std::vector<size_t>> m_isotropicTriangles;
+    std::vector<std::vector<AutoRemesher::Vector2>> m_isotropicTriangleUvs;
+    std::vector<std::vector<AutoRemesher::Vector2>> m_isotropicOriginalTriangleUvs;
+    std::vector<uint8_t> m_isotropicExtractedConnectionMoved;
+    std::vector<AutoRemesher::Vector3> m_isotropicSingularVertices;
+    std::vector<std::pair<AutoRemesher::Vector3, AutoRemesher::Vector3>> m_isotropicExtractedConnections;
     AutoRemesher::AutoRemesher* m_autoRemesher = nullptr;
     Parameters m_parameters;
 };

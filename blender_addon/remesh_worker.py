@@ -26,10 +26,9 @@ def main() -> int:
         np.ascontiguousarray(data["triangles"], dtype=np.uint32),
     )
     remesher.target_quad_count = int(params["target_quad_count"])
-    remesher.island_detail_spans = int(params.get("island_detail_spans", 10))
-    remesher.feature_size_factor = float(params.get("feature_size_factor", 1.0))
     remesher.scaling = float(params["scaling"])
     remesher.adaptivity = float(params["adaptivity"])
+    remesher.anisotropy = float(params.get("anisotropy", 1.0))
     remesher.sharp_edge_degrees = float(params["sharp_edge_degrees"])
     remesher.smooth_normal_degrees = float(params["smooth_normal_degrees"])
 

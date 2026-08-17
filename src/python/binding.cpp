@@ -21,15 +21,12 @@
  */
 #include <AutoRemesher/AutoRemesher>
 
-#include <geogram/basic/common.h>
-
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
 
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -38,14 +35,6 @@
 namespace nb = nanobind;
 
 namespace {
-
-void ensureGeogramInitialized()
-{
-    static std::once_flag flag;
-    // 0 (not GEOGRAM_INSTALL_HANDLERS): geogram must not install
-    // process-wide signal/error handlers inside the host application.
-    std::call_once(flag, [] { GEO::initialize(0); });
-}
 
 using VertexArray = nb::ndarray<nb::numpy, double, nb::shape<-1, 3>, nb::c_contig, nb::device::cpu>;
 using IndexArray = nb::ndarray<nb::numpy, uint32_t, nb::shape<-1>, nb::c_contig, nb::device::cpu>;
@@ -72,10 +61,9 @@ public:
     }
 
     size_t targetQuadCount = 50000;
-    size_t islandDetailSpans = 10;
-    double featureSizeFactor = 1.0;
     double scaling = 1.0;
     double adaptivity = 1.0;
+    double anisotropy = 1.0;
     double sharpEdgeDegrees = 90.0;
     double smoothNormalDegrees = 0.0;
     bool hardSurface = false;
@@ -85,15 +73,12 @@ public:
         if (m_running.exchange(true))
             throw std::runtime_error("Remesher.run() is already in progress");
 
-        ensureGeogramInitialized();
-
         AutoRemesher::AutoRemesher remesher(m_vertices, m_triangles);
         // The desktop UI counts quads; the core counts triangles (2 per quad).
         remesher.setTargetTriangleCount(targetQuadCount * 2);
-        remesher.setIslandDetailSpans(islandDetailSpans);
-        remesher.setFeatureSizeFactor(featureSizeFactor);
         remesher.setScaling(scaling);
         remesher.setGradientAdaptivity(adaptivity);
+        remesher.setAnisotropy(anisotropy);
         remesher.setSharpEdgeDegrees(sharpEdgeDegrees);
         remesher.setSmoothNormalDegrees(smoothNormalDegrees);
         remesher.setModelType(hardSurface ? AutoRemesher::ModelType::HardSurface
@@ -201,16 +186,10 @@ NB_MODULE(autoremesher_core, m)
             nb::arg("vertices"), nb::arg("triangles"),
             "vertices: float64 array of shape (n, 3); triangles: uint32 array of shape (m, 3)")
         .def_rw("target_quad_count", &Remesher::targetQuadCount)
-        .def_rw("island_detail_spans", &Remesher::islandDetailSpans,
-            "Minimum edge lengths across each disconnected island's bounding "
-            "diagonal, so small parts keep their shape (never finer than the "
-            "island's original density). 0 disables.")
-        .def_rw("feature_size_factor", &Remesher::featureSizeFactor,
-            "Clamp resampling edge length to factor * local-feature-size "
-            "(distance to the medial axis), preserving thin features like "
-            "claws and horns. 0 disables.")
         .def_rw("scaling", &Remesher::scaling)
         .def_rw("adaptivity", &Remesher::adaptivity)
+        .def_rw("anisotropy", &Remesher::anisotropy,
+            "Anisotropic quad sizing (upstream 1.1). 1.0 is isotropic.")
         .def_rw("sharp_edge_degrees", &Remesher::sharpEdgeDegrees)
         .def_rw("smooth_normal_degrees", &Remesher::smoothNormalDegrees)
         .def_rw("hard_surface", &Remesher::hardSurface)

@@ -22,6 +22,7 @@
 #include "modelshadermesh.h"
 #include <QFile>
 #include <QTextStream>
+#include <algorithm>
 #include <cmath>
 
 float ModelShaderMesh::m_defaultMetalness = 0.0;
@@ -40,6 +41,22 @@ ModelShaderMesh::ModelShaderMesh(const ModelShaderMesh& mesh)
         this->m_edgeVertexCount = mesh.m_edgeVertexCount;
         for (int i = 0; i < mesh.m_edgeVertexCount; i++)
             this->m_edgeVertices[i] = mesh.m_edgeVertices[i];
+    }
+    if (nullptr != mesh.m_triangleIndices && mesh.m_triangleIndexCount > 0) {
+        this->m_triangleIndices = new uint32_t[mesh.m_triangleIndexCount];
+        this->m_triangleIndexCount = mesh.m_triangleIndexCount;
+        std::copy_n(mesh.m_triangleIndices, mesh.m_triangleIndexCount, this->m_triangleIndices);
+    }
+    if (nullptr != mesh.m_edgeIndices && mesh.m_edgeIndexCount > 0) {
+        this->m_edgeIndices = new uint32_t[mesh.m_edgeIndexCount];
+        this->m_edgeIndexCount = mesh.m_edgeIndexCount;
+        std::copy_n(mesh.m_edgeIndices, mesh.m_edgeIndexCount, this->m_edgeIndices);
+    }
+    if (nullptr != mesh.m_connectionEdgeVertices && mesh.m_connectionEdgeVertexCount > 0) {
+        this->m_connectionEdgeVertices = new ModelShaderVertex[mesh.m_connectionEdgeVertexCount];
+        this->m_connectionEdgeVertexCount = mesh.m_connectionEdgeVertexCount;
+        for (int i = 0; i < mesh.m_connectionEdgeVertexCount; i++)
+            this->m_connectionEdgeVertices[i] = mesh.m_connectionEdgeVertices[i];
     }
     if (nullptr != mesh.m_toolVertices && mesh.m_toolVertexCount > 0) {
         this->m_toolVertices = new ModelShaderVertex[mesh.m_toolVertexCount];
@@ -88,7 +105,7 @@ void ModelShaderMesh::removeColor()
 }
 
 ModelShaderMesh::ModelShaderMesh(ModelShaderVertex* triangleVertices, int vertexNum, ModelShaderVertex* edgeVertices, int edgeVertexCount,
-    std::vector<AutoRemesher::Vector3>* vertices, std::vector<std::vector<size_t>>* faces)
+    const std::vector<AutoRemesher::Vector3>* vertices, const std::vector<std::vector<size_t>>* faces)
     : m_triangleVertices(triangleVertices)
     , m_triangleVertexCount(vertexNum)
     , m_edgeVertices(edgeVertices)
@@ -149,6 +166,12 @@ ModelShaderMesh::~ModelShaderMesh()
     m_triangleVertexCount = 0;
     delete[] m_edgeVertices;
     m_edgeVertexCount = 0;
+    delete[] m_triangleIndices;
+    m_triangleIndexCount = 0;
+    delete[] m_edgeIndices;
+    m_edgeIndexCount = 0;
+    delete[] m_connectionEdgeVertices;
+    m_connectionEdgeVertexCount = 0;
     delete[] m_toolVertices;
     m_toolVertexCount = 0;
     delete m_textureImage;
@@ -184,6 +207,36 @@ ModelShaderVertex* ModelShaderMesh::edgeVertices()
 int ModelShaderMesh::edgeVertexCount()
 {
     return m_edgeVertexCount;
+}
+
+const uint32_t* ModelShaderMesh::triangleIndices()
+{
+    return m_triangleIndices;
+}
+
+int ModelShaderMesh::triangleIndexCount()
+{
+    return m_triangleIndexCount;
+}
+
+const uint32_t* ModelShaderMesh::edgeIndices()
+{
+    return m_edgeIndices;
+}
+
+int ModelShaderMesh::edgeIndexCount()
+{
+    return m_edgeIndexCount;
+}
+
+ModelShaderVertex* ModelShaderMesh::connectionEdgeVertices()
+{
+    return m_connectionEdgeVertices;
+}
+
+int ModelShaderMesh::connectionEdgeVertexCount()
+{
+    return m_connectionEdgeVertexCount;
 }
 
 ModelShaderVertex* ModelShaderMesh::toolVertices()
@@ -276,6 +329,27 @@ void ModelShaderMesh::updateEdges(ModelShaderVertex* edgeVertices, int edgeVerte
     m_edgeVertexCount = edgeVertexCount;
 }
 
+void ModelShaderMesh::updateTriangleIndices(uint32_t* triangleIndices, int triangleIndexCount)
+{
+    delete[] m_triangleIndices;
+    m_triangleIndices = triangleIndices;
+    m_triangleIndexCount = triangleIndexCount;
+}
+
+void ModelShaderMesh::updateEdgeIndices(uint32_t* edgeIndices, int edgeIndexCount)
+{
+    delete[] m_edgeIndices;
+    m_edgeIndices = edgeIndices;
+    m_edgeIndexCount = edgeIndexCount;
+}
+
+void ModelShaderMesh::updateConnectionEdges(ModelShaderVertex* edgeVertices, int edgeVertexCount)
+{
+    delete[] m_connectionEdgeVertices;
+    m_connectionEdgeVertices = edgeVertices;
+    m_connectionEdgeVertexCount = edgeVertexCount;
+}
+
 void ModelShaderMesh::updateTriangleVertices(ModelShaderVertex* triangleVertices, int triangleVertexCount)
 {
     delete[] m_triangleVertices;
@@ -284,6 +358,14 @@ void ModelShaderMesh::updateTriangleVertices(ModelShaderVertex* triangleVertices
 
     m_triangleVertices = triangleVertices;
     m_triangleVertexCount = triangleVertexCount;
+
+    // Any existing indices refer to the array that was just replaced
+    delete[] m_triangleIndices;
+    m_triangleIndices = nullptr;
+    m_triangleIndexCount = 0;
+    delete[] m_edgeIndices;
+    m_edgeIndices = nullptr;
+    m_edgeIndexCount = 0;
 }
 
 quint64 ModelShaderMesh::meshId() const

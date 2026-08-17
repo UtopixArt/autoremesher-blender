@@ -19,11 +19,15 @@
  */
 #ifndef AUTO_REMESHER_QUAD_EXTRACTOR_H
 #define AUTO_REMESHER_QUAD_EXTRACTOR_H
+#include <AutoRemesher/Progress>
 #include <AutoRemesher/Vector2>
 #include <AutoRemesher/Vector3>
+#include <cstdint>
+#include <map>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace AutoRemesher {
@@ -49,17 +53,63 @@ public:
         return m_remeshedPolygons;
     }
 
+    // The raw connections produced by extractConnections(), before graph cleanup.
+    const std::vector<std::pair<Vector3, Vector3>>& extractedConnections() const
+    {
+        return m_extractedConnections;
+    }
+
+    void setOriginalTriangleUvs(const std::vector<std::vector<Vector2>>* originalTriangleUvs)
+    {
+        m_originalTriangleUvs = originalTriangleUvs;
+    }
+
+    void setSingularVertices(const std::vector<size_t>* singularVertices)
+    {
+        m_singularVertices = singularVertices;
+    }
+
+    void setProgressHandler(ProgressHandler progressHandler)
+    {
+        m_progressHandler = std::move(progressHandler);
+    }
+
+    // Per connection of extractedConnections(): 0 untouched, 1 on a triangle whose uv
+    // was repaired, 2 added by holdSingularLines(). Drives the [Param] preview color.
+    const std::vector<uint8_t>& extractedConnectionMoved() const
+    {
+        return m_extractedConnectionMoved;
+    }
+
     bool extract();
 
 private:
+    // The isoline a connection was cut from: which uv coordinate is held constant,
+    // which integer value it is held at, and which triangle produced the segment.
+    struct ConnectionInfo {
+        size_t triangleIndex = 0;
+        int coordIndex = 0;
+        int integer = 0;
+    };
+
     const std::vector<Vector3>* m_vertices = nullptr;
     const std::vector<std::vector<size_t>>* m_triangles = nullptr;
     const std::vector<std::vector<Vector2>>* m_triangleUvs = nullptr;
     std::vector<Vector3> m_remeshedVertices;
     std::vector<std::vector<size_t>> m_remeshedPolygons;
+    std::vector<std::pair<Vector3, Vector3>> m_extractedConnections;
+    std::vector<uint8_t> m_extractedConnectionMoved;
+    const std::vector<std::vector<Vector2>>* m_originalTriangleUvs = nullptr;
+    const std::vector<size_t>* m_singularVertices = nullptr;
+    ProgressHandler m_progressHandler;
+    std::map<std::pair<size_t, size_t>, ConnectionInfo> m_connectionInfos;
+    std::set<std::pair<size_t, size_t>> m_addedConnections;
     std::set<std::pair<size_t, size_t>> m_halfEdges;
 
     void extractConnections(std::vector<Vector3>* crossPoints,
+        std::vector<size_t>* sourceTriangles,
+        std::set<std::pair<size_t, size_t>>* connections);
+    void holdSingularLines(std::vector<Vector3>* crossPoints,
         std::vector<size_t>* sourceTriangles,
         std::set<std::pair<size_t, size_t>>* connections);
     void extractEdges(const std::set<std::pair<size_t, size_t>>& connections,
@@ -85,6 +135,20 @@ private:
         const std::vector<size_t>& triangle,
         const std::vector<size_t>& testPoints);
     bool removeIsolatedFaces();
+    void smoothAndProject(size_t iterations,
+        const std::unordered_set<size_t>* movableVertices = nullptr);
+    void smoothAroundVertices(const std::unordered_set<size_t>& seedVertices,
+        size_t rings, size_t iterations);
+    void splitSixEdgeFaces();
+    void switchHighValenceEdges();
+    void convertTriangleAndFiveEdgeFans();
+    void collapseThreeValenceDiagonals();
+    void mergeDoubleSharedEdgeQuads();
+    void cleanupTriangles();
+    void splitSevenEdgeFaces();
+    // Merges one edge per pass over the whole polygon set, so it reports from
+    // inside its round loop instead of running silently to completion.
+    void mergeSharedFiveEdgeFaces(const ProgressHandler* progressHandler = nullptr);
     bool removeNonManifoldFaces();
     void rebuildHalfEdges();
     void fixHoles();

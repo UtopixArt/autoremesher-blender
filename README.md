@@ -10,10 +10,13 @@
 
 AutoRemesher is an automatic quad remeshing (auto-retopology) tool that converts
 high-polygon meshes into clean quad-based topology. It is built on top of
-[Geogram](https://github.com/BrunoLevy/geogram),
 [isotropicremesher](https://github.com/huxingyi/isotropicremesher),
-[Eigen](https://eigen.tuxfamily.org/), [oneTBB](https://github.com/uxlfoundation/oneTBB) and
+[Eigen](https://eigen.tuxfamily.org/), [meshoptimizer](https://github.com/zeux/meshoptimizer),
+[oneTBB](https://github.com/uxlfoundation/oneTBB) and
 [others](ACKNOWLEDGEMENTS.html).
+
+This Blender fork tracks **upstream AutoRemesher 1.1** (native quad parameterizer,
+dense-mesh simplification, anisotropic sizing, and quad-cleanup improvements).
 
 | Original (903k triangles) | AutoRemesher result (~25k quads) |
 | :---: | :---: |
@@ -22,24 +25,17 @@ high-polygon meshes into clean quad-based topology. It is built on top of
 ## What the Blender fork adds
 
 - **N-panel UI** (3D Viewport → `N` → AutoRemesher) with the desktop app's
-  parameters: Target Quads, Edge Scaling, Sharp Edge, Smooth Normal, Adaptivity.
+  parameters: Target Quads, Edge Scaling, Sharp Edge, Smooth Normal, Adaptivity,
+  Anisotropy.
 - **Crash-proof and cancellable**: remeshing runs in a separate process of
   Blender's bundled Python — a native crash becomes an error report instead of
   taking Blender down, progress shows in the status bar, and `Esc` cancels.
-- **Preserve Thin Features**: medial-axis (local feature size) sizing keeps
-  claws, horns and spikes from being averaged away, at the cost of exceeding
-  the quad target on thin-feature-heavy meshes.
-- **Island Detail**: small disconnected parts (teeth, plates) are remeshed at
-  higher density — measured as quads across each part, so it adapts to size —
-  instead of collapsing into blobs.
 - **Weld Shells**: optional DynaMesh-style voxel preprocess that fuses
   intersecting shells into one watertight surface before quad remeshing.
-- **No lost geometry**: islands that fail to quadrangulate keep their
-  triangles instead of being silently dropped, and failed islands are retried.
-- **Core fixes over upstream 1.0.0** (apply to the desktop app too): a
-  use-after-free crash in parallel island processing, out-of-bounds n-gon
-  output handling, a hard assertion on degenerate geometry turned into a
-  graceful skip, and input scale normalization.
+
+> Note: the previous Blender-only options *Island Detail* and *Preserve Thin
+> Features* (Geogram LFS) were dropped while syncing to upstream 1.1, which
+> removed Geogram. They can be re-ported later on top of the new core.
 
 ## Installing the Blender extension
 
@@ -56,8 +52,7 @@ Requires **Blender 5.1+** (or Blender 4.2 LTS–5.0 with the `-blender42-` zips)
    and `Esc` cancels.
 
 Parameters mirror the desktop app: **Target Quads**, **Edge Scaling**, **Sharp Edge**,
-**Smooth Normal**, **Adaptivity**, plus a Blender-only **Island Detail Floor** that keeps
-small disconnected parts (teeth, spikes) from collapsing into blobs.
+**Smooth Normal**, **Adaptivity**, **Anisotropy**.
 
 The remeshing runs in a separate process of Blender's own Python, so a crash in the native
 core can never take Blender down.
@@ -90,7 +85,7 @@ build instructions.
 - [A New Open-Source Auto-Retopology Tool](https://80.lv/articles/a-new-open-source-auto-retopology-tool/) **80.lv**
 - [[Non-Blender] Autoremesher auto-retopology tool released](https://www.blendernation.com/2020/08/18/non-blender-autoremesher-auto-retopology-tool-released/) **blendernation.com**
 - [オープンソースの新しいオートリメッシュツール Auto Remesher](https://cginterest.com/2020/08/20/%e3%82%aa%e3%83%bc%e3%83%97%e3%83%b3%e3%82%bd%e3%83%bc%e3%82%b9%e3%81%ae%e6%96%b0%e3%81%97%e3%81%84%e3%82%aa%e3%83%bc%e3%83%88%e3%83%aa%e3%83%a1%e3%83%83%e3%82%b7%e3%83%a5%e3%83%84%e3%83%bc%e3%83%ab-a/) **cginterest.com**
-- [AutoRemesher 1.0.0-alpha - 超高速で高品質のクワッドポリゴン生成！Dust3D開発者によるオープンソースの自動リメッシュツール！](https://3dnchu.com/archives/autoremesher-1-0-0-alpha/) **3dnchu.com**
+- [AutoRemesher 1.1.0-alpha - 超高速で高品質のクワッドポリゴン生成！Dust3D開発者によるオープンソースの自動リメッシュツール！](https://3dnchu.com/archives/autoremesher-1-0-0-alpha/) **3dnchu.com**
 - [Open Source AutoRemesher released](https://cgpress.org/archives/open-source-remesher.html) **cgpress.org**
 - [「autoremesher」多角形を自動でリトポしてれる無料トポロジーツール](https://modelinghappy.com/archives/30339) **modelinghappy.com**
 - [Open Source Auto Remesher](https://blender-addons.org/open-source-auto-remesher/) **blender-addons.org**
@@ -103,17 +98,3 @@ The remeshing core (this repository's original code) is licensed under the **MIT
 by the original author — see [LICENSE](LICENSE). The Blender extension
 (`blender_addon/`) is **GPL-3.0-or-later**, as required for add-ons on
 [extensions.blender.org](https://extensions.blender.org/).
-
-Bundled third-party libraries keep their own licenses, all GPL-compatible:
-[Geogram](https://github.com/BrunoLevy/geogram) (BSD-3-Clause, Inria),
-[Eigen](https://eigen.tuxfamily.org/) (MPL-2.0, built with `EIGEN_MPL2_ONLY`),
-[oneTBB](https://github.com/uxlfoundation/oneTBB) (Apache-2.0),
-[isotropicremesher](https://github.com/huxingyi/isotropicremesher) (MIT) and
-[tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) (MIT).
-
-## Acknowledgements
-
-See the full [ACKNOWLEDGEMENTS](ACKNOWLEDGEMENTS.html) for the list of libraries and
-resources used in this project.
-
-<!-- Sponsors begin --><!-- Sponsors end -->
