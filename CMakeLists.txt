@@ -23,18 +23,23 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-# --- Bundled TBB (2017, legacy CMakeLists style), built statically.
-# Suppress the cmake_minimum_required version check that CMake 4 enforces.
+# --- oneTBB 2023.1.0 via FetchContent (GCC 14 / CMake 4 compatible).
+# The legacy TBB 2017 in thirdparty/tbb fails to build with GCC 14's
+# -Wchanges-meaning-as-error; use the official modern release instead.
+include(FetchContent)
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 set(TBB_INSTALL OFF CACHE BOOL "" FORCE)
 set(TBB_ENABLE_IPO OFF CACHE BOOL "" FORCE)
 set(TBBMALLOC_BUILD OFF CACHE BOOL "" FORCE)
-set(TBB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-set(TBB_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-add_subdirectory(thirdparty/tbb EXCLUDE_FROM_ALL)
+FetchContent_Declare(
+    TBB
+    GIT_REPOSITORY https://github.com/uxlfoundation/oneTBB.git
+    GIT_TAG        v2023.1.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(TBB)
 
 set(CORE_SOURCES
     src/AutoRemesher/autoremesher.cpp
@@ -63,11 +68,10 @@ target_include_directories(autoremesher_static PUBLIC
     thirdparty/eigen
     thirdparty/isotropicremesher
     thirdparty/meshoptimizer/src
-    thirdparty/tbb/include
 )
 target_compile_definitions(autoremesher_static PUBLIC
     _USE_MATH_DEFINES NOMINMAX EIGEN_MPL2_ONLY)
-target_link_libraries(autoremesher_static PUBLIC tbb_static)
+target_link_libraries(autoremesher_static PUBLIC TBB::tbb)
 set_target_properties(autoremesher_static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(APPLE)
@@ -77,7 +81,7 @@ endif()
 
 if(WIN32)
     # Static oneTBB: disable the '#pragma comment(lib, "tbb12")' auto-link.
-    target_compile_definitions(autoremesher_static PUBLIC __TBB_NO_IMPLICIT_LINKAGE=1)
+    # oneTBB 2023 links TBB::tbb which already suppresses auto-link
     target_compile_options(autoremesher_static PRIVATE /bigobj)
     target_link_libraries(autoremesher_static PUBLIC advapi32 shell32 user32)
 else()
