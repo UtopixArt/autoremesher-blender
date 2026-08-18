@@ -23,9 +23,8 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-# --- Bundled TBB, built statically so the wheel is self-contained.
-# Do not download a dependency during a wheel build: runners and local
-# installations must be reproducible even when GitHub's archive CDN throttles.
+# --- Bundled TBB (2017, legacy CMakeLists style), built statically.
+# Suppress the cmake_minimum_required version check that CMake 4 enforces.
 set(TBB_TEST OFF CACHE BOOL "" FORCE)
 set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 set(TBB_INSTALL OFF CACHE BOOL "" FORCE)
@@ -34,6 +33,7 @@ set(TBBMALLOC_BUILD OFF CACHE BOOL "" FORCE)
 set(TBB_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(TBB_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 add_subdirectory(thirdparty/tbb EXCLUDE_FROM_ALL)
 
 set(CORE_SOURCES
@@ -63,6 +63,7 @@ target_include_directories(autoremesher_static PUBLIC
     thirdparty/eigen
     thirdparty/isotropicremesher
     thirdparty/meshoptimizer/src
+    thirdparty/tbb/include
 )
 target_compile_definitions(autoremesher_static PUBLIC
     _USE_MATH_DEFINES NOMINMAX EIGEN_MPL2_ONLY)
