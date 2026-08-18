@@ -32,6 +32,8 @@ set(TBB_STRICT OFF CACHE BOOL "" FORCE)
 set(TBB_INSTALL OFF CACHE BOOL "" FORCE)
 set(TBB_ENABLE_IPO OFF CACHE BOOL "" FORCE)
 set(TBBMALLOC_BUILD OFF CACHE BOOL "" FORCE)
+# Build only the static variant so the wheel is self-contained (no .so/.dll to bundle).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_Declare(
     TBB
@@ -86,6 +88,8 @@ if(WIN32)
     target_link_libraries(autoremesher_static PUBLIC advapi32 shell32 user32)
 else()
     target_compile_options(autoremesher_static PRIVATE -O3 -funroll-loops)
+    find_package(Threads REQUIRED)
+    target_link_libraries(autoremesher_static PUBLIC Threads::Threads)
 endif()
 
 nanobind_add_module(autoremesher_core STABLE_ABI src/python/binding.cpp)
